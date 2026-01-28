@@ -1,12 +1,16 @@
+import logging
 import os
 import re
 import sqlite3
+import sys
 from typing import Dict, List, Optional, Set, Tuple
 
 import discord
 from discord import app_commands
 
-DB_PATH = os.getenv("KEYWORD_BOT_DB", "keywords.db")
+DB_PATH = os.getenv("KEYWORD_BOT_DB", "data/keywords.db")
+LOG_PATH = os.getenv("KEYWORD_BOT_LOG_PATH", "bot.log")
+LOG_LEVEL = os.getenv("KEYWORD_BOT_LOG_LEVEL", "INFO").upper()
 
 INTENTS = discord.Intents.default()
 INTENTS.message_content = True
@@ -16,8 +20,33 @@ INTENTS.members = True
 bot = discord.Client(intents=INTENTS)
 tree = app_commands.CommandTree(bot)
 
+logger = logging.getLogger("keyword_bot")
+
+
+def setup_logging() -> None:
+    handlers: List[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    try:
+        handlers.append(logging.FileHandler(LOG_PATH))
+    except OSError:
+        pass
+
+    logging.basicConfig(
+        level=LOG_LEVEL,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=handlers,
+    )
+
+
+def _preview_message(text: str, limit: int = 200) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
+
 
 def init_db() -> None:
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=10)
     try:
         conn.execute(
@@ -105,9 +134,10 @@ def fetch_keywords_for_guild(guild_id: int) -> List[Tuple[int, str, str]]:
 
 @bot.event
 async def on_ready() -> None:
+    setup_logging()
     init_db()
     await tree.sync()
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    logger.info("Logged in as %s (ID: %s)", bot.user, bot.user.id)
 
 
 @tree.command(name="add-keyword-channel", description="Add a keyword for a specific channel")
@@ -136,10 +166,24 @@ async def add_keyword_channel(interaction: discord.Interaction, keyword: str, ch
             f"Added keyword `{keyword}` for {channel.mention}.",
             ephemeral=True,
         )
+        logger.info(
+            "Added keyword channel: user=%s guild=%s channel=%s keyword=%s",
+            interaction.user.id,
+            interaction.guild.id,
+            channel.id,
+            keyword,
+        )
     else:
         await interaction.response.send_message(
             f"Keyword `{keyword}` is already tracked for {channel.mention}.",
             ephemeral=True,
+        )
+        logger.info(
+            "Keyword already tracked (channel): user=%s guild=%s channel=%s keyword=%s",
+            interaction.user.id,
+            interaction.guild.id,
+            channel.id,
+            keyword,
         )
 
 
@@ -161,10 +205,22 @@ async def add_keyword_server(interaction: discord.Interaction, keyword: str) -> 
             f"Added keyword `{keyword}` for all accessible channels in this server.",
             ephemeral=True,
         )
+        logger.info(
+            "Added keyword server: user=%s guild=%s keyword=%s",
+            interaction.user.id,
+            interaction.guild.id,
+            keyword,
+        )
     else:
         await interaction.response.send_message(
             f"Keyword `{keyword}` is already tracked server-wide.",
             ephemeral=True,
+        )
+        logger.info(
+            "Keyword already tracked (server): user=%s guild=%s keyword=%s",
+            interaction.user.id,
+            interaction.guild.id,
+            keyword,
         )
 
 
@@ -193,6 +249,12 @@ async def list_keywords_cmd(interaction: discord.Interaction) -> None:
 
     message = "Your keywords:\n" + "\n".join(lines)
     await interaction.response.send_message(message, ephemeral=True)
+    logger.info(
+        "Listed keywords: user=%s guild=%s count=%s",
+        interaction.user.id,
+        interaction.guild.id,
+        len(rows),
+    )
 
 
 @tree.command(name="remove-keyword", description="Remove a keyword from this server")
@@ -213,10 +275,23 @@ async def remove_keyword_cmd(interaction: discord.Interaction, keyword: str) -> 
             f"Removed `{keyword}` from this server ({removed} entries).",
             ephemeral=True,
         )
+        logger.info(
+            "Removed keyword: user=%s guild=%s keyword=%s removed=%s",
+            interaction.user.id,
+            interaction.guild.id,
+            keyword,
+            removed,
+        )
     else:
         await interaction.response.send_message(
             f"No tracked keyword `{keyword}` found in this server.",
             ephemeral=True,
+        )
+        logger.info(
+            "Remove keyword miss: user=%s guild=%s keyword=%s",
+            interaction.user.id,
+            interaction.guild.id,
+            keyword,
         )
 
 
@@ -241,8 +316,19 @@ async def on_message(message: discord.Message) -> None:
     if not message.content:
         return
 
+    logger.info(
+        "Message seen: guild=%s channel=%s author=%s content=%s",
+        message.guild.id,
+        message.channel.id,
+        message.author.id,
+        _preview_message(message.content),
+    )
+    logger.debug("Processing message from %s: %s", message.author, _preview_message(message.content, 500))
+
     rows = fetch_keywords_for_guild(message.guild.id)
     if not rows:
+        logger.info("No keywords for guild=%s", message.guild.id)
+        logger.debug("No keywords registered for guild %s", message.guild.name)
         return
 
     patterns: Dict[str, re.Pattern] = {}
@@ -250,6 +336,11 @@ async def on_message(message: discord.Message) -> None:
 
     for user_id, keyword, channel_id in rows:
         if message.author.id == user_id:
+            logger.info(
+                "Skip self match: user=%s keyword=%s",
+                user_id,
+                keyword,
+            )
             continue
         if channel_id != "GLOBAL" and str(message.channel.id) != channel_id:
             continue
@@ -260,12 +351,17 @@ async def on_message(message: discord.Message) -> None:
             patterns[keyword] = pattern
 
         if not pattern.search(message.content):
+            logger.debug(
+                "Keyword '%s' found in DB but not matched in text.",
+                keyword,
+            )
             continue
 
         user_matches = matched.setdefault(user_id, set())
         user_matches.add(keyword)
 
     if not matched:
+        logger.info("No keyword matches: guild=%s channel=%s", message.guild.id, message.channel.id)
         return
 
     member_cache: Dict[int, Optional[discord.Member]] = {}
@@ -277,9 +373,15 @@ async def on_message(message: discord.Message) -> None:
             member = await _get_member(message.guild, user_id)
             member_cache[user_id] = member
         if member is None:
+            logger.info("Member not found: user=%s guild=%s", user_id, message.guild.id)
             continue
 
         if not message.channel.permissions_for(member).view_channel:
+            logger.info(
+                "Permission denied for user=%s channel=%s",
+                user_id,
+                message.channel.id,
+            )
             continue
 
         user = user_cache.get(user_id)
@@ -295,6 +397,7 @@ async def on_message(message: discord.Message) -> None:
             user_cache[user_id] = user
 
         if user is None:
+            logger.info("User fetch failed: user=%s", user_id)
             continue
 
         for keyword in keywords:
@@ -306,8 +409,19 @@ async def on_message(message: discord.Message) -> None:
             )
             try:
                 await user.send(dm_text)
+                logger.info(
+                    "DM sent: user=%s guild=%s channel=%s keyword=%s",
+                    user_id,
+                    message.guild.id,
+                    message.channel.id,
+                    keyword,
+                )
             except discord.Forbidden:
+                logger.info("DM forbidden: user=%s", user_id)
                 break
+
+    if hasattr(bot, "process_commands"):
+        await bot.process_commands(message)
 
 
 if __name__ == "__main__":
