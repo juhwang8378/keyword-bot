@@ -22,6 +22,78 @@ tree = app_commands.CommandTree(bot)
 
 logger = logging.getLogger("keyword_bot")
 
+KOREAN_PARTICLES: Tuple[str, ...] = (
+    "께서",
+    "에서부터",
+    "으로부터",
+    "로부터",
+    "에게서",
+    "한테서",
+    "으로써",
+    "로써",
+    "으로서",
+    "로서",
+    "이라고는",
+    "라고는",
+    "이라고",
+    "라고",
+    "이나마",
+    "나마",
+    "이라도",
+    "라도",
+    "이든지",
+    "든지",
+    "이든",
+    "든",
+    "이랑",
+    "랑",
+    "이나",
+    "나",
+    "이며",
+    "하며",
+    "하고",
+    "이자",
+    "자",
+    "에게",
+    "한테",
+    "에서",
+    "으로",
+    "로",
+    "까지",
+    "부터",
+    "밖에",
+    "뿐",
+    "조차",
+    "마저",
+    "마다",
+    "만큼",
+    "쯤",
+    "씩",
+    "만치",
+    "같이",
+    "처럼",
+    "대로",
+    "보다",
+    "커녕",
+    "도",
+    "만",
+    "의",
+    "과",
+    "와",
+    "을",
+    "를",
+    "은",
+    "는",
+    "이",
+    "가",
+    "에",
+    "께",
+)
+
+_KOREAN_PARTICLE_PATTERN = "|".join(
+    sorted((re.escape(p) for p in KOREAN_PARTICLES), key=len, reverse=True)
+)
+
 
 def setup_logging() -> None:
     handlers: List[logging.Handler] = [logging.StreamHandler(sys.stdout)]
@@ -41,6 +113,17 @@ def _preview_message(text: str, limit: int = 200) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 3] + "..."
+
+
+def _compile_keyword_pattern(keyword: str) -> re.Pattern:
+    escaped = re.escape(keyword)
+    if re.search(r"[가-힣]", keyword):
+        # Allow up to 3 stacked particles while keeping strict word boundaries.
+        return re.compile(
+            rf"(?<!\w){escaped}(?:{_KOREAN_PARTICLE_PATTERN}){{0,3}}(?!\w)",
+            re.IGNORECASE,
+        )
+    return re.compile(rf"\b{escaped}\b", re.IGNORECASE)
 
 
 def init_db() -> None:
@@ -422,7 +505,7 @@ async def on_message(message: discord.Message) -> None:
 
         pattern = patterns.get(keyword)
         if pattern is None:
-            pattern = re.compile(r"\b" + re.escape(keyword) + r"\b", re.IGNORECASE)
+            pattern = _compile_keyword_pattern(keyword)
             patterns[keyword] = pattern
 
         if not pattern.search(message.content):
