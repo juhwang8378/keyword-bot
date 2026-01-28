@@ -247,29 +247,29 @@ async def on_ready() -> None:
     logger.info("Logged in as %s (ID: %s)", bot.user, bot.user.id)
 
 
-@tree.command(name="add-keyword-channel", description="Add a keyword for a specific channel")
-@app_commands.describe(keyword="Keyword to track", channel="Channel to track the keyword in")
+@tree.command(name="add-keyword-channel", description="특정 채널에 키워드를 추가합니다")
+@app_commands.describe(keyword="추적할 키워드", channel="키워드를 추적할 채널")
 async def add_keyword_channel(interaction: discord.Interaction, keyword: str, channel: discord.TextChannel) -> None:
     if interaction.guild is None:
-        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+        await interaction.response.send_message("이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
         return
 
     if channel.guild.id != interaction.guild.id:
-        await interaction.response.send_message("Please choose a channel from this server.", ephemeral=True)
+        await interaction.response.send_message("이 서버의 채널을 선택해 주세요.", ephemeral=True)
         return
 
     if not channel.permissions_for(interaction.user).view_channel:
-        await interaction.response.send_message("You do not have access to that channel.", ephemeral=True)
+        await interaction.response.send_message("해당 채널에 접근 권한이 없습니다.", ephemeral=True)
         return
 
     keyword = keyword.strip()
     if not keyword:
-        await interaction.response.send_message("Keyword cannot be empty.", ephemeral=True)
+        await interaction.response.send_message("키워드는 비워둘 수 없습니다.", ephemeral=True)
         return
 
     if keyword_exists(interaction.user.id, keyword, str(channel.id), interaction.guild.id):
         await interaction.response.send_message(
-            f"Keyword `{keyword}` is already tracked for {channel.mention}.",
+            f"`{keyword}` 키워드는 이미 {channel.mention}에서 추적 중입니다.",
             ephemeral=True,
         )
         logger.info(
@@ -283,7 +283,7 @@ async def add_keyword_channel(interaction: discord.Interaction, keyword: str, ch
 
     if count_keywords(interaction.user.id, interaction.guild.id) >= 10:
         await interaction.response.send_message(
-            "Keyword limit reached (max 10 per server). Remove one before adding a new keyword.",
+            "키워드 한도에 도달했습니다(서버당 최대 10개). 새로 추가하려면 기존 키워드를 삭제해 주세요.",
             ephemeral=True,
         )
         logger.info(
@@ -296,7 +296,7 @@ async def add_keyword_channel(interaction: discord.Interaction, keyword: str, ch
     added = add_keyword(interaction.user.id, keyword, str(channel.id), interaction.guild.id)
     if added:
         await interaction.response.send_message(
-            f"Added keyword `{keyword}` for {channel.mention}.",
+            f"{channel.mention}에 `{keyword}` 키워드를 추가했습니다.",
             ephemeral=True,
         )
         logger.info(
@@ -308,7 +308,7 @@ async def add_keyword_channel(interaction: discord.Interaction, keyword: str, ch
         )
     else:
         await interaction.response.send_message(
-            f"Keyword `{keyword}` is already tracked for {channel.mention}.",
+            f"`{keyword}` 키워드는 이미 {channel.mention}에서 추적 중입니다.",
             ephemeral=True,
         )
         logger.info(
@@ -320,21 +320,21 @@ async def add_keyword_channel(interaction: discord.Interaction, keyword: str, ch
         )
 
 
-@tree.command(name="add-keyword-server", description="Add a keyword for all accessible channels in this server")
-@app_commands.describe(keyword="Keyword to track across this server")
+@tree.command(name="add-keyword-server", description="이 서버의 접근 가능한 모든 채널에 키워드를 추가합니다")
+@app_commands.describe(keyword="서버 전체에서 추적할 키워드")
 async def add_keyword_server(interaction: discord.Interaction, keyword: str) -> None:
     if interaction.guild is None:
-        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+        await interaction.response.send_message("이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
         return
 
     keyword = keyword.strip()
     if not keyword:
-        await interaction.response.send_message("Keyword cannot be empty.", ephemeral=True)
+        await interaction.response.send_message("키워드는 비워둘 수 없습니다.", ephemeral=True)
         return
 
     if keyword_exists(interaction.user.id, keyword, "GLOBAL", interaction.guild.id):
         await interaction.response.send_message(
-            f"Keyword `{keyword}` is already tracked server-wide.",
+            f"`{keyword}` 키워드는 이미 서버 전체에서 추적 중입니다.",
             ephemeral=True,
         )
         logger.info(
@@ -347,7 +347,7 @@ async def add_keyword_server(interaction: discord.Interaction, keyword: str) -> 
 
     if count_keywords(interaction.user.id, interaction.guild.id) >= 10:
         await interaction.response.send_message(
-            "Keyword limit reached (max 10 per server). Remove one before adding a new keyword.",
+            "키워드 한도에 도달했습니다(서버당 최대 10개). 새로 추가하려면 기존 키워드를 삭제해 주세요.",
             ephemeral=True,
         )
         logger.info(
@@ -360,7 +360,7 @@ async def add_keyword_server(interaction: discord.Interaction, keyword: str) -> 
     added = add_keyword(interaction.user.id, keyword, "GLOBAL", interaction.guild.id)
     if added:
         await interaction.response.send_message(
-            f"Added keyword `{keyword}` for all accessible channels in this server.",
+            f"이 서버의 접근 가능한 모든 채널에 `{keyword}` 키워드를 추가했습니다.",
             ephemeral=True,
         )
         logger.info(
@@ -371,7 +371,7 @@ async def add_keyword_server(interaction: discord.Interaction, keyword: str) -> 
         )
     else:
         await interaction.response.send_message(
-            f"Keyword `{keyword}` is already tracked server-wide.",
+            f"`{keyword}` 키워드는 이미 서버 전체에서 추적 중입니다.",
             ephemeral=True,
         )
         logger.info(
@@ -382,30 +382,30 @@ async def add_keyword_server(interaction: discord.Interaction, keyword: str) -> 
         )
 
 
-@tree.command(name="list-keywords", description="List your tracked keywords in this server")
+@tree.command(name="list-keywords", description="이 서버에서 추적 중인 키워드를 확인합니다")
 async def list_keywords_cmd(interaction: discord.Interaction) -> None:
     if interaction.guild is None:
-        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+        await interaction.response.send_message("이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
         return
 
     rows = list_keywords(interaction.user.id, interaction.guild.id)
     if not rows:
-        await interaction.response.send_message("You have no keywords tracked in this server.", ephemeral=True)
+        await interaction.response.send_message("이 서버에서 추적 중인 키워드가 없습니다.", ephemeral=True)
         return
 
     lines: List[str] = []
     for keyword, channel_id in rows:
         if channel_id == "GLOBAL":
-            location = "GLOBAL"
+            location = "전체"
         else:
             channel = interaction.guild.get_channel(int(channel_id))
             if channel is None:
-                location = f"#unknown-channel ({channel_id})"
+                location = f"#알 수 없는 채널 ({channel_id})"
             else:
                 location = f"#{channel.name}"
         lines.append(f"`{keyword}` → {location}")
 
-    message = "Your keywords:\n" + "\n".join(lines)
+    message = "내 키워드 목록:\n" + "\n".join(lines)
     await interaction.response.send_message(message, ephemeral=True)
     logger.info(
         "Listed keywords: user=%s guild=%s count=%s",
@@ -415,22 +415,22 @@ async def list_keywords_cmd(interaction: discord.Interaction) -> None:
     )
 
 
-@tree.command(name="remove-keyword", description="Remove a keyword from this server")
-@app_commands.describe(keyword="Keyword to remove")
+@tree.command(name="remove-keyword", description="이 서버에서 키워드를 삭제합니다")
+@app_commands.describe(keyword="삭제할 키워드")
 async def remove_keyword_cmd(interaction: discord.Interaction, keyword: str) -> None:
     if interaction.guild is None:
-        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+        await interaction.response.send_message("이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
         return
 
     keyword = keyword.strip()
     if not keyword:
-        await interaction.response.send_message("Keyword cannot be empty.", ephemeral=True)
+        await interaction.response.send_message("키워드는 비워둘 수 없습니다.", ephemeral=True)
         return
 
     removed = remove_keyword(interaction.user.id, interaction.guild.id, keyword)
     if removed > 0:
         await interaction.response.send_message(
-            f"Removed `{keyword}` from this server ({removed} entries).",
+            f"`{keyword}` 키워드를 이 서버에서 삭제했습니다 ({removed}개).",
             ephemeral=True,
         )
         logger.info(
@@ -442,7 +442,7 @@ async def remove_keyword_cmd(interaction: discord.Interaction, keyword: str) -> 
         )
     else:
         await interaction.response.send_message(
-            f"No tracked keyword `{keyword}` found in this server.",
+            f"이 서버에서 `{keyword}` 키워드를 찾을 수 없습니다.",
             ephemeral=True,
         )
         logger.info(
@@ -560,10 +560,11 @@ async def on_message(message: discord.Message) -> None:
 
         for keyword in keywords:
             dm_text = (
-                "키워드가 감지되었습니다\n\n"
+                "## :mega: 키워드가 감지되었습니다\n"
                 f"채널: #{message.channel.name} ({message.jump_url})\n"
                 f"유저: {message.author.display_name}\n"
-                f"메시지: {message.content}"
+                f"메시지: {message.content}\n"
+                "\n"
             )
             try:
                 await user.send(dm_text)
