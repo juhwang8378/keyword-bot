@@ -95,6 +95,30 @@ def add_keyword(user_id: int, keyword: str, channel_id: str, guild_id: int) -> b
         conn.close()
 
 
+def keyword_exists(user_id: int, keyword: str, channel_id: str, guild_id: int) -> bool:
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            "SELECT 1 FROM keywords WHERE user_id = ? AND keyword = ? AND channel_id = ? AND guild_id = ? LIMIT 1",
+            (user_id, keyword, channel_id, guild_id),
+        )
+        return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def count_keywords(user_id: int, guild_id: int) -> int:
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            "SELECT COUNT(*) FROM keywords WHERE user_id = ? AND guild_id = ?",
+            (user_id, guild_id),
+        )
+        return int(cur.fetchone()[0])
+    finally:
+        conn.close()
+
+
 def list_keywords(user_id: int, guild_id: int) -> List[Tuple[str, str]]:
     conn = _connect()
     try:
@@ -160,6 +184,32 @@ async def add_keyword_channel(interaction: discord.Interaction, keyword: str, ch
         await interaction.response.send_message("Keyword cannot be empty.", ephemeral=True)
         return
 
+    if keyword_exists(interaction.user.id, keyword, str(channel.id), interaction.guild.id):
+        await interaction.response.send_message(
+            f"Keyword `{keyword}` is already tracked for {channel.mention}.",
+            ephemeral=True,
+        )
+        logger.info(
+            "Keyword already tracked (channel): user=%s guild=%s channel=%s keyword=%s",
+            interaction.user.id,
+            interaction.guild.id,
+            channel.id,
+            keyword,
+        )
+        return
+
+    if count_keywords(interaction.user.id, interaction.guild.id) >= 10:
+        await interaction.response.send_message(
+            "Keyword limit reached (max 10 per server). Remove one before adding a new keyword.",
+            ephemeral=True,
+        )
+        logger.info(
+            "Keyword limit reached: user=%s guild=%s",
+            interaction.user.id,
+            interaction.guild.id,
+        )
+        return
+
     added = add_keyword(interaction.user.id, keyword, str(channel.id), interaction.guild.id)
     if added:
         await interaction.response.send_message(
@@ -197,6 +247,31 @@ async def add_keyword_server(interaction: discord.Interaction, keyword: str) -> 
     keyword = keyword.strip()
     if not keyword:
         await interaction.response.send_message("Keyword cannot be empty.", ephemeral=True)
+        return
+
+    if keyword_exists(interaction.user.id, keyword, "GLOBAL", interaction.guild.id):
+        await interaction.response.send_message(
+            f"Keyword `{keyword}` is already tracked server-wide.",
+            ephemeral=True,
+        )
+        logger.info(
+            "Keyword already tracked (server): user=%s guild=%s keyword=%s",
+            interaction.user.id,
+            interaction.guild.id,
+            keyword,
+        )
+        return
+
+    if count_keywords(interaction.user.id, interaction.guild.id) >= 10:
+        await interaction.response.send_message(
+            "Keyword limit reached (max 10 per server). Remove one before adding a new keyword.",
+            ephemeral=True,
+        )
+        logger.info(
+            "Keyword limit reached: user=%s guild=%s",
+            interaction.user.id,
+            interaction.guild.id,
+        )
         return
 
     added = add_keyword(interaction.user.id, keyword, "GLOBAL", interaction.guild.id)
