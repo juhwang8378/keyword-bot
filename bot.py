@@ -11,6 +11,7 @@ from discord import app_commands
 DB_PATH = os.getenv("KEYWORD_BOT_DB", "data/keywords.db")
 LOG_PATH = os.getenv("KEYWORD_BOT_LOG_PATH", "bot.log")
 LOG_LEVEL = os.getenv("KEYWORD_BOT_LOG_LEVEL", "INFO").upper()
+GUILD_IDS_RAW = os.getenv("KEYWORD_BOT_GUILD_IDS", "")
 
 INTENTS = discord.Intents.default()
 INTENTS.message_content = True
@@ -243,6 +244,17 @@ def fetch_keywords_for_guild(guild_id: int) -> List[Tuple[int, str, str]]:
 async def on_ready() -> None:
     setup_logging()
     init_db()
+    guild_ids = [gid.strip() for gid in GUILD_IDS_RAW.split(",") if gid.strip()]
+    if guild_ids:
+        for guild_id in guild_ids:
+            try:
+                guild = discord.Object(id=int(guild_id))
+            except ValueError:
+                logger.warning("Invalid guild id for sync: %s", guild_id)
+                continue
+            tree.copy_global_to(guild=guild)
+            await tree.sync(guild=guild)
+            logger.info("Synced commands to guild=%s", guild_id)
     await tree.sync()
     logger.info("Logged in as %s (ID: %s)", bot.user, bot.user.id)
 
