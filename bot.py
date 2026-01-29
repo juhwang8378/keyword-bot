@@ -246,16 +246,21 @@ async def on_ready() -> None:
     init_db()
     guild_ids = [gid.strip() for gid in GUILD_IDS_RAW.split(",") if gid.strip()]
     if guild_ids:
+        global_commands = list(tree.get_commands(guild=None))
+        tree.clear_commands(guild=None)
+        await tree.sync()
         for guild_id in guild_ids:
             try:
                 guild = discord.Object(id=int(guild_id))
             except ValueError:
                 logger.warning("Invalid guild id for sync: %s", guild_id)
                 continue
-            tree.copy_global_to(guild=guild)
+            for command in global_commands:
+                tree.add_command(command, guild=guild)
             await tree.sync(guild=guild)
             logger.info("Synced commands to guild=%s", guild_id)
-    await tree.sync()
+    else:
+        await tree.sync()
     logger.info("Logged in as %s (ID: %s)", bot.user, bot.user.id)
 
 
