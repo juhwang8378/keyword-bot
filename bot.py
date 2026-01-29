@@ -247,11 +247,43 @@ async def on_ready() -> None:
     logger.info("Logged in as %s (ID: %s)", bot.user, bot.user.id)
 
 
+async def channel_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> List[app_commands.Choice[str]]:
+    if interaction.guild is None:
+        return []
+
+    query = current.lstrip("#").lower()
+    channels: List[discord.TextChannel] = []
+    for channel in interaction.guild.text_channels:
+        if not channel.permissions_for(interaction.user).view_channel:
+            continue
+        if query and query not in channel.name.lower():
+            continue
+        channels.append(channel)
+
+    channels.sort(key=lambda ch: ch.position)
+    return [
+        app_commands.Choice(name=f"#{channel.name}", value=str(channel.id))
+        for channel in channels[:25]
+    ]
+
+
 @tree.command(name="add-keyword-channel", description="특정 채널에 키워드를 추가합니다")
-@app_commands.describe(keyword="추적할 키워드", channel="키워드를 추적할 채널")
-async def add_keyword_channel(interaction: discord.Interaction, keyword: str, channel: discord.TextChannel) -> None:
+@app_commands.describe(keyword="추적할 키워드", channel_id="키워드를 추적할 채널")
+@app_commands.autocomplete(channel_id=channel_autocomplete)
+async def add_keyword_channel(interaction: discord.Interaction, keyword: str, channel_id: str) -> None:
     if interaction.guild is None:
         await interaction.response.send_message("이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
+        return
+
+    try:
+        channel = interaction.guild.get_channel(int(channel_id))
+    except (TypeError, ValueError):
+        channel = None
+
+    if channel is None or not isinstance(channel, discord.TextChannel):
+        await interaction.response.send_message("텍스트 채널을 선택해 주세요.", ephemeral=True)
         return
 
     if channel.guild.id != interaction.guild.id:
@@ -469,9 +501,10 @@ async def _get_member(guild: discord.Guild, user_id: int) -> Optional[discord.Me
 async def on_message(message: discord.Message) -> None:
     if message.guild is None:
         return
-    if message.author.bot:
-        return
     if not message.content:
+        return
+    # Only skip this bot's own messages; include other bot messages for keyword tracking.
+    if message.author.bot and bot.user is not None and message.author.id == bot.user.id:
         return
 
     logger.info(
